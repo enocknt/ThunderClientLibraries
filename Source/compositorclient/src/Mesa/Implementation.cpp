@@ -575,13 +575,8 @@ namespace Linux {
             return result;
         }
 
-        const Exchange::IComposition::IDisplay* RemoteDisplay() const
-        {
-            return _remoteDisplay;
-        }
-        Exchange::IComposition::IDisplay* RemoteDisplay()
-        {
-            return _remoteDisplay;
+        bool IsValid() const {
+            return _remoteDisplay != nullptr;
         }
 
     private:
@@ -906,6 +901,16 @@ namespace Linux {
 
 Compositor::IDisplay* Compositor::IDisplay::Instance(const string& displayName)
 {
-    return (&(Linux::Display::Instance(displayName)));
+    Compositor::IDisplay* result(nullptr); 
+
+    Linux::Display& display = Linux::Display::Instance(displayName);
+
+    if (display.IsValid() == false){
+        display.Release();
+    } else{
+        result = &(display);
+    }
+
+    return result;
 }
 } // namespace Thunder
