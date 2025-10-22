@@ -24,39 +24,11 @@
 #include <Renderer.h>
 #include <TextureBounce.h>
 
+#include "ClientCompositorRender.h"
+
 namespace Thunder {
 namespace Plugin {
     class ClientCompositorRenderImplementation : public PluginHost::IStateControl {
-    private:
-        class Config : public Core::JSON::Container {
-        public:
-            Config(const Config&) = delete;
-            Config& operator=(const Config&) = delete;
-
-            Config()
-                : Core::JSON::Container()
-                , Width(Compositor::Render::DefaultWidth)
-                , Height(Compositor::Render::DefaultHeight)
-                , TextAtlas("Arial.png")
-                , Image("ml-tv-color-small.png")
-                , ImageCount(40)
-            {
-                Add(_T("width"), &Width);
-                Add(_T("heigth"), &Height);
-                Add(_T("textatlas"), &TextAtlas);
-                Add(_T("image"), &Image);
-                Add(_T("imagecount"), &ImageCount);
-            }
-            ~Config() override = default;
-
-        public:
-            Core::JSON::DecUInt16 Width;
-            Core::JSON::DecUInt16 Height;
-            Core::JSON::String TextAtlas;
-            Core::JSON::String Image;
-            Core::JSON::DecUInt32 ImageCount;
-        };
-
     public:
         ClientCompositorRenderImplementation(const ClientCompositorRenderImplementation&) = delete;
         ClientCompositorRenderImplementation& operator=(const ClientCompositorRenderImplementation&) = delete;
@@ -81,10 +53,10 @@ namespace Plugin {
             uint32_t result(Core::ERROR_NONE);
 
             ASSERT(service != nullptr);
-            Config config;
+            ClientCompositorRender::Config config;
             config.FromString(service->ConfigLine());
 
-            if (_renderer.Configure(config.Width.Value(), config.Height.Value())) {
+            if (_renderer.Configure(config.CanvasWidth.Value(), config.CanvasHeight.Value())) {
                 Compositor::TextureBounce::Config model_config;
                 model_config.Image = service->DataPath() + config.Image.Value();
                 model_config.ImageCount = config.ImageCount.Value();

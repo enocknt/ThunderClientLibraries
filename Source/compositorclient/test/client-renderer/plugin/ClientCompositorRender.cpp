@@ -20,7 +20,6 @@
 #include "ClientCompositorRender.h"
 
 namespace Thunder {
-
 namespace ClientCompositorRender {
     extern Exchange::IMemory* MemoryObserver(const RPC::IRemoteConnection* connection);
 }
@@ -73,6 +72,29 @@ namespace Plugin {
                     connection->Release();
                 }
             }
+
+            Config config;
+            config.FromString(service->ConfigLine());
+
+            if (config.RelativeGeometry.IsSet()) {
+                Geometry params;
+
+                params.X = (config.CanvasWidth.Value() * config.RelativeGeometry.X.Value()) / 100;
+                params.Y = (config.CanvasHeight.Value() * config.RelativeGeometry.Y.Value()) / 100;
+                params.Width = (config.CanvasWidth.Value() * config.RelativeGeometry.Width.Value()) / 100;
+                params.Height = (config.CanvasHeight.Value() * config.RelativeGeometry.Height.Value()) / 100;
+
+                string paramsString;
+                params.ToString(paramsString);
+
+                PluginHost::IDispatcher* dispatch = service->QueryInterfaceByCallsign<PluginHost::IDispatcher>("Controller");
+
+                string output;
+                Core::hresult result = dispatch->Invoke(0, 42, "", "Compositor.1.geometry@" + service->Callsign(), paramsString, output);
+
+                std::cout << "Requested resize: Result=" << result << " response " << output << std::endl;
+            }
+
         } else {
             message = _T("ClientCompositorRender could not be instantiated.");
         }

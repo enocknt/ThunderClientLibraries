@@ -281,8 +281,17 @@ namespace Compositor {
                     _textRender.Draw(ss.str(), 10, 10);
                 }
 
+                // Insert fence to track GPU completion
+                EGLSyncKHR sync = eglCreateSync(_eglDisplay, EGL_SYNC_FENCE_KHR, nullptr);
+
                 // Swap buffers
                 eglSwapBuffers(_eglDisplay, _eglSurface);
+
+                // Wait for GPU to actually finish rendering
+                if (sync != EGL_NO_SYNC_KHR) {
+                    eglClientWaitSync(_eglDisplay, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 16000000); // 16ms timeout
+                    eglDestroySync(_eglDisplay, sync);
+                }
 
                 _surface->RequestRender();
 

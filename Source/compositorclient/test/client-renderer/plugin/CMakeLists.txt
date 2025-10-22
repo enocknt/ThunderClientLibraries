@@ -51,12 +51,47 @@ if(INSTALL_CLIENT_COMPOSITOR_RENDER_TEST_PLUGIN)
 install(TARGETS ClientCompositorRender
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/${STORAGE_DIRECTORY}/plugins COMPONENT ${NAMESPACE}_Runtime)
 
-foreach(Index RANGE 1 ${PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES})
-    write_config(
-        PLUGINS ClientCompositorRender
-        CLASSNAME ClientCompositorRender
-        LOCATOR libClientCompositorRender${CMAKE_SHARED_LIBRARY_SUFFIX}
-        INSTALL_NAME ClientCompositorRender${Index}.json
-    )
-endforeach()
+    # Cap instances at 16 and warn if exceeded
+    if(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES GREATER 16)
+        message(WARNING "PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES is ${PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES}, capping at 16")
+        set(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES 16)
+    endif()
+
+    # Determine grid layout based on instance count
+    if(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES EQUAL 1)
+        set(GRID_COLS 1)
+        set(GRID_ROWS 1)
+        set(CELL_WIDTH 100)
+        set(CELL_HEIGHT 100)
+    elseif(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES LESS_EQUAL 4)
+        set(GRID_COLS 2)
+        set(GRID_ROWS 2)
+        set(CELL_WIDTH 50)
+        set(CELL_HEIGHT 50)
+    else()
+        set(GRID_COLS 4)
+        set(GRID_ROWS 4)
+        set(CELL_WIDTH 25)
+        set(CELL_HEIGHT 25)
+    endif()
+
+    foreach(Index RANGE 1 ${PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCES})
+        # Calculate grid position (0-based index for math)
+        math(EXPR ZeroIndex "${Index} - 1")
+        math(EXPR Col "${ZeroIndex} % ${GRID_COLS}")
+        math(EXPR Row "${ZeroIndex} / ${GRID_COLS}")
+        
+        # Calculate percentage positions
+        math(EXPR PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCE_X "${Col} * ${CELL_WIDTH}")
+        math(EXPR PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCE_Y "${Row} * ${CELL_HEIGHT}")
+        set(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCE_WIDTH ${CELL_WIDTH})
+        set(PLUGIN_COMPOSITORCLIENT_PLUGIN_INSTANCE_HEIGHT ${CELL_HEIGHT})
+        
+        write_config(
+            PLUGINS ClientCompositorRender
+            CLASSNAME ClientCompositorRender
+            LOCATOR libClientCompositorRender${CMAKE_SHARED_LIBRARY_SUFFIX}
+            INSTALL_NAME ClientCompositorRender${Index}.json
+        )
+    endforeach()
 endif()

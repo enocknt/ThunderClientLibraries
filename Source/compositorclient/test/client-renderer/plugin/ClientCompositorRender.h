@@ -16,7 +16,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
+
 #pragma once
 
 #include "Module.h"
@@ -25,7 +25,7 @@
 
 namespace Thunder {
 namespace Plugin {
-    class ClientCompositorRender : public PluginHost::IPlugin{
+    class ClientCompositorRender : public PluginHost::IPlugin {
     private:
         class Notification : public RPC::IRemoteConnection::INotification, public PluginHost::IStateControl::INotification {
         public:
@@ -53,14 +53,14 @@ namespace Plugin {
             {
             }
 
-
-            void StateChange(const PluginHost::IStateControl::state state) override {
+            void StateChange(const PluginHost::IStateControl::state state) override
+            {
                 _parent.StateChange(state);
             }
 
             BEGIN_INTERFACE_MAP(Notification)
             INTERFACE_ENTRY(RPC::IRemoteConnection::INotification)
-            INTERFACE_ENTRY (PluginHost::IStateControl::INotification)
+            INTERFACE_ENTRY(PluginHost::IStateControl::INotification)
             END_INTERFACE_MAP
 
         private:
@@ -68,9 +68,68 @@ namespace Plugin {
         };
 
     public:
+        static constexpr uint16_t DefaultWidth = 1920;
+        static constexpr uint16_t DefaultHeight = 1080;
+
+        class Geometry : public Core::JSON::Container {
+        public:
+            Geometry()
+                : Core::JSON::Container()
+                , X(0)
+                , Y(0)
+                , Width(100)
+                , Height(100)
+            {
+                Add(_T("x"), &X);
+                Add(_T("y"), &Y);
+                Add(_T("width"), &Width);
+                Add(_T("height"), &Height);
+            }
+            ~Geometry() override = default;
+
+        public:
+            Core::JSON::DecUInt16 X;
+            Core::JSON::DecUInt16 Y;
+            Core::JSON::DecUInt16 Width;
+            Core::JSON::DecUInt16 Height;
+        };
+
+        class Config : public Core::JSON::Container {
+        public:
+            Config(const Config&) = delete;
+            Config& operator=(const Config&) = delete;
+
+            Config()
+                : Core::JSON::Container()
+                , CanvasWidth(DefaultWidth)
+                , CanvasHeight(DefaultHeight)
+                , TextAtlas("Arial.png")
+                , Image("ml-tv-color-small.png")
+                , ImageCount(40)
+                , RelativeGeometry()
+            {
+                Add(_T("canvas-width"), &CanvasWidth);
+                Add(_T("canvas-heigth"), &CanvasHeight);
+                Add(_T("textatlas"), &TextAtlas);
+                Add(_T("image"), &Image);
+                Add(_T("imagecount"), &ImageCount);
+                Add(_T("relative-geometry"), &RelativeGeometry);
+            }
+            ~Config() override = default;
+
+        public:
+            Core::JSON::DecUInt16 CanvasWidth;
+            Core::JSON::DecUInt16 CanvasHeight;
+            Core::JSON::String TextAtlas;
+            Core::JSON::String Image;
+            Core::JSON::DecUInt32 ImageCount;
+            Geometry RelativeGeometry;
+        };
+
+    public:
         ClientCompositorRender(const ClientCompositorRender&) = delete;
         ClientCompositorRender& operator=(const ClientCompositorRender&) = delete;
-PUSH_WARNING(DISABLE_WARNING_THIS_IN_MEMBER_INITIALIZER_LIST)
+        PUSH_WARNING(DISABLE_WARNING_THIS_IN_MEMBER_INITIALIZER_LIST)
         ClientCompositorRender()
             : _connectionId(0)
             , _service(nullptr)
@@ -79,7 +138,7 @@ PUSH_WARNING(DISABLE_WARNING_THIS_IN_MEMBER_INITIALIZER_LIST)
             , _notification(this)
         {
         }
-POP_WARNING()
+        POP_WARNING()
         ~ClientCompositorRender() override = default;
 
         BEGIN_INTERFACE_MAP(ClientCompositorRender)
@@ -89,12 +148,13 @@ POP_WARNING()
         END_INTERFACE_MAP
 
     public:
-        // IPlugin  
+        // IPlugin
         const string Initialize(PluginHost::IShell* service) override;
         void Deinitialize(PluginHost::IShell* service) override;
         string Information() const override;
 
         void StateChange(PluginHost::IStateControl::state);
+
     private:
         void Deactivated(RPC::IRemoteConnection* connection);
 

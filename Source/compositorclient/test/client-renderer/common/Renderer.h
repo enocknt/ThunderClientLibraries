@@ -63,7 +63,7 @@ namespace Compositor {
         EGLSurface GetEGLSurface() const { return _eglSurface; }
 
         bool Configure(const uint16_t width = DefaultWidth, const uint16_t height = DefaultHeight);
-        
+
         void Start()
         {
             if (_models.empty()) {
@@ -109,7 +109,7 @@ namespace Compositor {
         {
             _showFps = !_showFps;
         }
-
+        
         // ICallback
         void Rendered(Thunder::Compositor::IDisplay::ISurface*) override;
         void Published(Thunder::Compositor::IDisplay::ISurface*) override;
