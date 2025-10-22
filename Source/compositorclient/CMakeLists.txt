@@ -19,12 +19,14 @@ cmake_minimum_required(VERSION 3.15)
 
 find_package(Thunder)
 
-project(Compositor)
-
-project_version(1.0.0)
+project(Compositor
+        VERSION 1.0.0
+        LANGUAGES CXX
+        DESCRIPTION "A graphical/input abstraction. This library is included in microservices that require user interaction (Graphics/input). The implementation hides all the compositor-specific details and allows for relaying keys to plugins."
+)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
 add_subdirectory(include)
 add_subdirectory(src)
-    add_subdirectory(test)
+add_subdirectory(test)
