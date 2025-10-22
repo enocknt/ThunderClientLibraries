@@ -38,6 +38,7 @@ target_link_libraries(ClientCompositorRenderCommon
         ${NAMESPACE}Core::${NAMESPACE}Core
         ${NAMESPACE}Messaging::${NAMESPACE}Messaging
         ClientCompositor::ClientCompositor
+        ClientVirtualInput::ClientVirtualInput # this hack is needed because the test app cannot look up the library in the staging dir yet... 
         CompileSettingsDebug::CompileSettingsDebug
         EGL::EGL
         GLESv2::GLESv2
