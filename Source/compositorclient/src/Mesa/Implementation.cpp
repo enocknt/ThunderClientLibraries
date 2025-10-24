@@ -219,7 +219,6 @@ namespace Linux {
                 , _id(_remoteClient->Native())
                 , _width(width)
                 , _height(height)
-                , _gbmBufferLock()
                 , _name(name)
                 , _keyboard(nullptr)
                 , _wheel(nullptr)
@@ -273,36 +272,14 @@ namespace Linux {
         private:
             gbm_bo* Lock(const uint16_t ms)
             {
-                ASSERT((_gbmSurface != nullptr) && "Failed to lock a framebuffer, surface is null");
-
-                gbm_bo* frameBuffer = nullptr;
-
-                if (_gbmBufferLock.try_lock_for(std::chrono::milliseconds(ms))) {
-                    frameBuffer = gbm_surface_lock_front_buffer(_gbmSurface);
-
-                    if (frameBuffer == nullptr) {
-                        _gbmBufferLock.unlock(); // Unlock the mutex to prevent deadlock
-                        TRACE(Trace::Error, (_T("Failed to lock front buffer, surface %p"), _gbmSurface));
-                    } else {
-                        TRACE(Trace::Information, (_T("Acquired framebuffer[%p]"), frameBuffer));
-                    }
-                } else {
-                    TRACE(Trace::Error, (_T("Failed to lock front buffer within %d ms"), ms));
-                }
-
-                return frameBuffer;
+                return (_gbmSurface != nullptr) ? gbm_surface_lock_front_buffer(_gbmSurface) : nullptr;
             }
 
             void Unlock(gbm_bo* frameBuffer)
             {
-                ASSERT((_gbmSurface != nullptr) && "Failed to release framebuffer, surface is null");
-
                 if ((_gbmSurface != nullptr) && (frameBuffer != nullptr)) {
                     gbm_surface_release_buffer(_gbmSurface, frameBuffer);
-                    TRACE(Trace::Information, (_T("Released framebuffer[%p]"), frameBuffer));
                 }
-
-                _gbmBufferLock.unlock();
             }
 
         public:
@@ -460,7 +437,6 @@ namespace Linux {
             const uint8_t _id;
             const int32_t _width; // real pixels allocated in the gpu!
             const int32_t _height; // real pixels allocated in the gpu
-            std::timed_mutex _gbmBufferLock;
             const string _name;
             IKeyboard* _keyboard;
             IWheel* _wheel;
