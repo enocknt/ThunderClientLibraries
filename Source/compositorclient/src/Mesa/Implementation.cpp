@@ -93,9 +93,7 @@ namespace Linux {
             const char* backendName = GetGbmBackendName(gbmDevice);
             return (backendName != nullptr) && (strcmp(backendName, name) == 0);
         }
-
     }
-
     class Display : public Compositor::IDisplay {
     public:
         Display() = delete;
@@ -121,6 +119,8 @@ namespace Linux {
 
         class SurfaceImplementation : public Compositor::IDisplay::ISurface {
         private:
+            static constexpr size_t MaxContentBuffers = 4;
+
             // for now only single plane buffers are supported, e.g. GBM_FORMAT_ARGB8888, GBM_FORMAT_XRGB8888, etc.
             class ContentBuffer : public Graphics::ClientBufferType<1> {
                 using BaseClass = Graphics::ClientBufferType<1>;
@@ -136,12 +136,13 @@ namespace Linux {
                     : BaseClass(gbm_bo_get_width(frameBuffer), gbm_bo_get_height(frameBuffer), gbm_bo_get_format(frameBuffer), gbm_bo_get_modifier(frameBuffer), Exchange::IGraphicsBuffer::TYPE_DMA)
                     , _parent(parent)
                     , _bo(frameBuffer)
+                    , _requestedAt(0)
                 {
                     ASSERT(_bo != nullptr);
 
                     if (_bo != nullptr) {
                         // for now only single plane buffers are supported
-                        ASSERT(gbm_bo_get_plane_count(_bo) == 1); 
+                        ASSERT(gbm_bo_get_plane_count(_bo) == 1);
 
                         Add(gbm_bo_get_fd_for_plane(_bo, 0),
                             gbm_bo_get_stride_for_plane(_bo, 0),
@@ -155,7 +156,7 @@ namespace Linux {
                         if (nDescriptors > 0) {
                             Core::PrivilegedRequest::Container container(descriptors.begin(), descriptors.begin() + nDescriptors);
                             Core::PrivilegedRequest request;
-                            
+
                             const string connector = ConnectorPath() + _T("descriptors");
 
                             if (request.Offer(100, connector, parent.Id(), container) == Core::ERROR_NONE) {
@@ -172,16 +173,17 @@ namespace Linux {
                 virtual ~ContentBuffer()
                 {
                     Core::ResourceMonitor::Instance().Unregister(*this);
-                };
+                }
 
                 static void Destroyed(gbm_bo* bo, void* data)
                 {
                     ASSERT(data != nullptr);
                     ContentBuffer* buffer = static_cast<ContentBuffer*>(data);
 
-                    TRACE_GLOBAL(Trace::Information, (_T("ContentBuffer[%p] Destroyed signaled"), buffer));
+                    TRACE_GLOBAL(Trace::Information, (_T("ContentBuffer[%p] Destroyed callback from GBM"), buffer));
 
                     if ((buffer != nullptr) && (bo == buffer->_bo)) {
+                        buffer->_parent.RemoveContentBuffer(buffer);
                         delete buffer;
                     } else {
                         TRACE_GLOBAL(Trace::Error, (_T("ContentBuffer[%p] Destroyed signaled with mismatched gbm_bo[%p]"), buffer, bo));
@@ -191,8 +193,21 @@ namespace Linux {
             protected:
                 void Rendered() override
                 {
-                    _parent.Unlock(_bo);
-                    _parent.Rendered();
+                    // Try to release - atomic get-and-clear
+                    uint64_t requested = _requestedAt.exchange(0, std::memory_order_acq_rel);
+
+                    if (requested > 0) {
+                        // We cleared it, so we do the release
+                        // uint64_t age = Core::Time::Now().Ticks() - requested;
+
+                        // printf("%d @[%" PRIu64 "] BRAM Rendered on ContentBuffer=%p, frameBuffer=%p (age: %" PRIu64 " µs)\n",
+                        //     __LINE__, Core::Time::Now().Ticks(), (void*)this, (void*)_bo, age);
+
+                        _parent.Rendered(_bo);
+                    } else {
+                        // Already released (timeout beat us, or double-call bug)
+                        TRACE(Trace::Warning, (_T("ContentBuffer %p already released (was %" PRIu64 ")"), this, requested));
+                    }
                 }
 
                 void Published() override
@@ -200,9 +215,74 @@ namespace Linux {
                     _parent.Published();
                 }
 
+            public:
+                bool RequestRender()
+                {
+                    uint64_t expected = 0;
+                    uint64_t desired = Core::Time::Now().Ticks();
+
+                    // Atomic compare-and-swap: only set if currently 0
+                    if (_requestedAt.compare_exchange_strong(expected, desired, std::memory_order_acq_rel)) {
+                        // Success - buffer was unlocked, now locked with timestamp
+                        // printf("%d @[%" PRIu64 "] BRAM Request Render on ContentBuffer=%p, frameBuffer=%p\n",
+                        //     __LINE__, Core::Time::Now().Ticks(), (void*)this, (void*)_bo);
+
+                        BaseClass::RequestRender();
+                        return true;
+                    } else {
+                        // Failed - buffer still locked
+                        uint64_t now = Core::Time::Now().Ticks();
+                        uint64_t age = (expected > 0 && now > expected) ? (now - expected) : 0;
+
+                        TRACE(Trace::Error, (_T("ContentBuffer %p still locked for %" PRIu64 " µs (requested at %" PRIu64 ")"), this, age, expected));
+
+                        return false;
+                    }
+                }
+
+                bool IsStuck(uint64_t now, uint64_t timeoutUs) const
+                {
+                    uint64_t requested = _requestedAt.load(std::memory_order_acquire);
+
+                    if (requested > 0) {
+                        return (now - requested) > timeoutUs;
+                    }
+
+                    return false;
+                }
+
+                bool ForceRelease()
+                {
+                    // Atomic check-and-clear
+                    uint64_t requested = _requestedAt.exchange(0, std::memory_order_acq_rel);
+
+                    if (requested > 0) {
+                        uint64_t age = Core::Time::Now().Ticks() - requested;
+
+                        TRACE(Trace::Error, (_T("ContentBuffer %p TIMEOUT %" PRIu64 " µs, force releasing!"), this, age));
+
+                        _parent.Rendered(_bo); // Force release
+                        return true;
+                    }
+
+                    return false; // Already released
+                }
+
+                gbm_bo* Bo() const { return _bo; }
+
+                uint64_t Age() const
+                {
+                    uint64_t requested = _requestedAt.load(std::memory_order_acquire);
+                    if (requested > 0) {
+                        return Core::Time::Now().Ticks() - requested;
+                    }
+                    return 0;
+                }
+
             private:
                 SurfaceImplementation& _parent;
                 gbm_bo* _bo;
+                std::atomic<uint64_t> _requestedAt;
             };
 
         public:
@@ -225,7 +305,10 @@ namespace Linux {
                 , _pointer(nullptr)
                 , _touchpanel(nullptr)
                 , _callback(callback)
+                , _contentBuffers()
+                , _bufferLock()
             {
+                _contentBuffers.fill(nullptr);
                 _display.AddRef();
 
                 ASSERT(_remoteClient != nullptr);
@@ -255,32 +338,75 @@ namespace Linux {
                     _touchpanel->Release();
                 }
 
+                // Prevent new RequestRender() calls from allocating new buffers.
+                gbm_surface* surface = _gbmSurface;
+                _gbmSurface = nullptr;
+
+                {
+                    Core::SafeSyncType<Core::CriticalSection> lock(_bufferLock);
+
+                    for (size_t i = 0; i < MaxContentBuffers; i++) {
+                        if (_contentBuffers[i] != nullptr) {
+                            // Clear user data to prevent GBM from calling our Destroyed callback
+                            gbm_bo_set_user_data(_contentBuffers[i]->Bo(), nullptr, nullptr);
+
+                            // Explicitly delete the ContentBuffer
+                            delete _contentBuffers[i];
+                            _contentBuffers[i] = nullptr;
+                        }
+                    }
+
+                    TRACE(Trace::Information, (_T("Cleaned up all ContentBuffers for surface %s"), _name.c_str()));
+                }
+
                 // Cleanup the remote client buffers
                 if (_remoteClient != nullptr) {
                     _remoteClient->Release();
                 }
 
-                // lets hope DRM cleans up the gbm buffer objects for us, if so drm should call ContentBuffer::Destroyed()...
-                if (_gbmSurface != nullptr) {
-                    gbm_surface_destroy(_gbmSurface);
-                    _gbmSurface = nullptr;
+                if (surface != nullptr) {
+                    gbm_surface_destroy(surface);
                 }
 
                 _display.Release();
             }
 
         private:
-            gbm_bo* Lock(const uint16_t ms)
+            void CheckStuckBuffers()
             {
-                return (_gbmSurface != nullptr) ? gbm_surface_lock_front_buffer(_gbmSurface) : nullptr;
-            }
+                const uint64_t TIMEOUT_TICKS = 200000; // 200ms
+                uint64_t now = Core::Time::Now().Ticks();
 
-            void Unlock(gbm_bo* frameBuffer)
-            {
-                if ((_gbmSurface != nullptr) && (frameBuffer != nullptr)) {
-                    gbm_surface_release_buffer(_gbmSurface, frameBuffer);
+                for (size_t i = 0; i < MaxContentBuffers; i++) {
+                    ContentBuffer* buffer = _contentBuffers[i];
+
+                    if (buffer != nullptr && buffer->IsStuck(now, TIMEOUT_TICKS)) {
+                        // Buffer is stuck - force release it
+                        buffer->ForceRelease();
+                    }
                 }
             }
+
+            // void PrintBufferStatus()
+            // {
+            //     printf("Buffer Status:\n");
+
+            //     for (size_t i = 0; i < MaxContentBuffers; i++) {
+            //         ContentBuffer* buffer = _contentBuffers[i];
+
+            //         if (buffer != nullptr) {
+            //             uint64_t age = buffer->Age();
+
+            //             if (age > 0) {
+            //                 printf("  Slot %zu: LOCKED for %llu µs\n", i, age);
+            //             } else {
+            //                 printf("  Slot %zu: FREE\n", i);
+            //             }
+            //         } else {
+            //             printf("  Slot %zu: EMPTY\n", i);
+            //         }
+            //     }
+            // }
 
         public:
             EGLNativeWindowType Native() const override
@@ -390,8 +516,12 @@ namespace Linux {
                 }
             }
 
-            void Rendered()
+            void Rendered(gbm_bo* frameBuffer = nullptr)
             {
+                if ((_gbmSurface != nullptr) && (frameBuffer != nullptr)) {
+                    gbm_surface_release_buffer(_gbmSurface, frameBuffer);
+                }
+
                 if (_callback != nullptr) {
                     _callback->Rendered(this);
                 }
@@ -404,25 +534,82 @@ namespace Linux {
                 }
             }
 
-            void RequestRender() override
+            void RemoveContentBuffer(ContentBuffer* buffer)
             {
-                gbm_bo* frameBuffer = Lock(1000);
+                Core::SafeSyncType<Core::CriticalSection> lock(_bufferLock);
 
+                for (size_t i = 0; i < MaxContentBuffers; i++) {
+                    if (_contentBuffers[i] == buffer) {
+                        _contentBuffers[i] = nullptr;
+                        TRACE(Trace::Information, (_T("Removed ContentBuffer[%p] from slot %zu for surface %s"), buffer, i, _name.c_str()));
+                        break;
+                    }
+                }
+            }
+
+            void RequestRender()
+            {
+                CheckStuckBuffers();
+
+                if (_gbmSurface == nullptr) {
+                    Rendered();
+                    return;
+                }
+
+                gbm_bo* frameBuffer = gbm_surface_lock_front_buffer(_gbmSurface);
+
+                // bail-out if we cannot lock the front buffer
                 if (frameBuffer == nullptr) {
-                    // bail-out if we cannot lock the front buffer
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                    Rendered(); // we still need call Rendered to request a new frame buffer
-                } else {
-                    ContentBuffer* buffer = static_cast<ContentBuffer*>(gbm_bo_get_user_data(frameBuffer));
+                    Rendered();
+                    return;
+                }
 
-                    if (buffer == nullptr) {
-                        buffer = new ContentBuffer(*this, frameBuffer);
-                        gbm_bo_set_user_data(frameBuffer, buffer, &ContentBuffer::Destroyed);
+                // Fast path: Buffer exists
+                ContentBuffer* buffer = static_cast<ContentBuffer*>(gbm_bo_get_user_data(frameBuffer));
+
+                if (buffer == nullptr) {
+                    Core::SafeSyncType<Core::CriticalSection> lock(_bufferLock);
+
+                    // Double-check pattern: another thread might have created it
+                    buffer = static_cast<ContentBuffer*>(gbm_bo_get_user_data(frameBuffer));
+                    if (buffer != nullptr) {
+                        // printf("%d @[%" PRIu64 "] BRAM Request Render on ContentBuffer=%p, frameBuffer=%p\n", __LINE__, Core::Time::Now().Ticks(), (void*)buffer, (void*)frameBuffer);
+                        buffer->RequestRender();
+                        return;
                     }
 
-                    ASSERT(buffer != nullptr);
-                    buffer->RequestRender();
+                    // Find empty slot in array
+                    size_t slot = MaxContentBuffers;
+                    for (size_t i = 0; i < MaxContentBuffers; i++) {
+                        if (_contentBuffers[i] == nullptr) {
+                            slot = i;
+                            break;
+                        }
+                    }
+
+                    if (slot == MaxContentBuffers) {
+                        // Pool exhausted - this should never happen with MaxContentBuffers=4
+                        TRACE(Trace::Error, (_T("ContentBuffer pool exhausted for surface %s! All %zu slots full."), _name.c_str(), MaxContentBuffers));
+                        TRACE(Trace::Error, (_T("This driver may use more buffers than expected. Consider increasing MaxContentBuffers.")));
+
+                        // Graceful degradation: still call Rendered to keep render loop going
+                        Rendered(frameBuffer);
+                        return;
+                    }
+
+                    // Create new ContentBuffer
+                    buffer = new ContentBuffer(*this, frameBuffer);
+                    _contentBuffers[slot] = buffer;
+
+                    // Set as user data so GBM can call our Destroyed callback
+                    gbm_bo_set_user_data(frameBuffer, buffer, &ContentBuffer::Destroyed);
+
+                    TRACE(Trace::Information, (_T("Created ContentBuffer[%p] for surface %s in slot %zu"), buffer, _name.c_str(), slot));
                 }
+
+                ASSERT(buffer != nullptr);
+                // printf("%d @[%" PRIu64 "] BRAM Request Render on ContentBuffer=%p, frameBuffer=%p\n", __LINE__, Core::Time::Now().Ticks(), (void*)buffer, (void*)frameBuffer);
+                buffer->RequestRender();
             }
 
             uint32_t Process()
@@ -443,6 +630,8 @@ namespace Linux {
             IPointer* _pointer;
             ITouchPanel* _touchpanel;
             ISurface::ICallback* _callback;
+            std::array<ContentBuffer*, MaxContentBuffers> _contentBuffers;
+            Core::CriticalSection _bufferLock;
 
             static uint32_t _surfaceIndex;
         }; // class SurfaceImplementation
@@ -551,7 +740,8 @@ namespace Linux {
             return result;
         }
 
-        bool IsValid() const {
+        bool IsValid() const
+        {
             return _remoteDisplay != nullptr;
         }
 
@@ -669,7 +859,7 @@ namespace Linux {
         {
             return (_remoteDisplay != nullptr ? _remoteDisplay->CreateClient(name, width, height) : nullptr);
         }
-        
+
         gbm_surface* CreateGbmSurface(const uint32_t width, const uint32_t height) const
         {
             gbm_surface* surface(nullptr);
@@ -877,13 +1067,13 @@ namespace Linux {
 
 Compositor::IDisplay* Compositor::IDisplay::Instance(const string& displayName)
 {
-    Compositor::IDisplay* result(nullptr); 
+    Compositor::IDisplay* result(nullptr);
 
     Linux::Display& display = Linux::Display::Instance(displayName);
 
-    if (display.IsValid() == false){
+    if (display.IsValid() == false) {
         display.Release();
-    } else{
+    } else {
         result = &(display);
     }
 
