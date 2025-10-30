@@ -46,6 +46,8 @@ namespace Compositor {
         , _rendering()
         , _renderSync()
         , _showFps(true)
+        , _skipRender(false)
+        , _skipModel(false)
         , _models()
         , _selectedModel(~0)
         , _rng(static_cast<unsigned int>(std::chrono::steady_clock::now().time_since_epoch().count()))
@@ -258,49 +260,48 @@ namespace Compositor {
 
     void Render::Draw()
     {
+        // Make context current for this render thread
+        if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
+            EGLint error = eglGetError();
+            fprintf(stderr, "Draw: eglMakeCurrent failed: 0x%x\n", error);
+            return;
+        }
+
         while (_running.load() && !ShouldExit()) {
             if (_models.empty() || _selectedModel >= _models.size()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
 
-            // Make context current for this render thread
-            if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
-                EGLint error = eglGetError();
-                fprintf(stderr, "Draw: eglMakeCurrent failed: 0x%x\n", error);
-                break;
+            if (_skipModel == false) {
+                if (_models[_selectedModel.load()]->Draw() == true) {
+
+                    // Draw FPS if enabled
+                    if (_showFps) {
+                        _textRender.Draw(_displayName, 10, _canvasHeight - 40);
+                        std::ostringstream ss;
+                        ss << "FPS: " << std::fixed << std::setprecision(2) << _currentFPS;
+                        _textRender.Draw(ss.str(), 10, 10);
+                    }
+
+                    // Swap buffers
+                    eglSwapBuffers(_eglDisplay, _eglSurface);
+                } else {
+                    TRACE(Trace::Warning, ("Model draw failed"));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+                }
             }
 
-            if (_models[_selectedModel.load()]->Draw() == true) {
-
-                // Draw FPS if enabled
-                if (_showFps) {
-                    _textRender.Draw(_displayName, 10, _canvasHeight - 40);
-                    std::ostringstream ss;
-                    ss << "FPS: " << std::fixed << std::setprecision(2) << _currentFPS;
-                    _textRender.Draw(ss.str(), 10, 10);
-                }
-
-                // Insert fence to track GPU completion
-                EGLSyncKHR sync = eglCreateSync(_eglDisplay, EGL_SYNC_FENCE_KHR, nullptr);
-
-                // Swap buffers
-                eglSwapBuffers(_eglDisplay, _eglSurface);
-
-                // Wait for GPU to actually finish rendering
-                if (sync != EGL_NO_SYNC_KHR) {
-                    eglClientWaitSync(_eglDisplay, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 16000000); // 16ms timeout
-                    eglDestroySync(_eglDisplay, sync);
-                }
-
+            if (_skipRender == false) {
                 _surface->RequestRender();
 
-                if (WaitForRendered(1000) == Core::ERROR_TIMEDOUT) {
+                // allow for for 2 25FPS frame delay
+                if (WaitForRendered(80) == Core::ERROR_TIMEDOUT) {
+                    printf("%d @[%" PRIu64 "] BRAM Render Timeout\n", __LINE__, Core::Time::Now().Ticks());
                     TRACE(Trace::Warning, ("Timed out waiting for rendered callback"));
                 }
             } else {
-                TRACE(Trace::Warning, ("Model draw failed"));
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
             }
         }
 

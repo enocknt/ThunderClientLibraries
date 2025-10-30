@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
- #include "Module.h"
+#include "Module.h"
 
 #include "TextureBounce.h"
 #include "IModel.h"
@@ -26,12 +26,16 @@
 
 #include <core/core.h>
 
+#include <localtracer/localtracer.h>
+
 #include <cstdio>
 #include <unistd.h>
 
 using namespace Thunder;
 
-static const char Namespace[] = EXPAND_AND_QUOTE(NAMESPACE);
+namespace {
+const char Namespace[] = EXPAND_AND_QUOTE(NAMESPACE);
+}
 
 class ConsoleOptions : public Thunder::Core::Options {
 public:
@@ -75,6 +79,23 @@ private:
 
 int main(int argc, char* argv[])
 {
+    Messaging::LocalTracer& tracer = Messaging::LocalTracer::Open();
+
+    const std::map<std::string, std::vector<std::string>> modules = {
+        { "App_CompositionClientRender", { "" } },
+        { "Common_CompositionClientRender", { "" } },
+        { "CompositorBuffer", { "Error", "Information" } },
+        { "CompositorBackend", { "Error" } },
+        { "CompositorRenderer", { "Error", "Warning", "Information" } },
+        { "DRMCommon", { "Error", "Warning", "Information" } }
+    };
+
+    for (const auto& module_entry : modules) {
+        for (const auto& category : module_entry.second) {
+            tracer.EnableMessage(module_entry.first, category, true);
+        }
+    }
+
     const char* executableName(Thunder::Core::FileNameOnly(argv[0]));
     ConsoleOptions options(argc, argv);
     bool quitApp(false);
@@ -115,6 +136,8 @@ int main(int argc, char* argv[])
 
         renderer.Start();
 
+        bool result;
+
         if (keyboard.IsValid() == true) {
             while (!renderer.ShouldExit() && !quitApp) {
                 switch (toupper(keyboard.Read())) {
@@ -124,7 +147,19 @@ int main(int argc, char* argv[])
                     }
                     break;
                 case 'F':
-                    renderer.ToggleFPS();
+                    result = renderer.ToggleFPS();
+                    printf("%d FPS: %s\n", __LINE__, result ? "off" : "on");
+                    break;
+                case 'Z':
+                    result = renderer.ToggleRequestRender();
+                    printf("%d RequestRender: %s\n", __LINE__, result ? "off" : "on");
+                    break;
+                case 'R':
+                    renderer.TriggerRender();
+                    break;
+                case 'M':
+                    result = renderer.ToggleModelRender();
+                    printf("%d Model Render: %s\n", __LINE__, result ? "off" : "on");
                     break;
                 case 'Q':
                     quitApp = true;

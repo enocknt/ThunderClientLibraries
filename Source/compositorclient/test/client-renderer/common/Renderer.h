@@ -105,11 +105,33 @@ namespace Compositor {
         {
             return _exitRequested.load();
         }
-        void ToggleFPS()
+        bool ToggleFPS()
         {
             _showFps = !_showFps;
+            return _showFps;
         }
-        
+
+        bool ToggleRequestRender()
+        {
+            _skipRender = !_skipRender;
+            return _skipRender;
+        }
+
+        bool ToggleModelRender()
+        {
+            _skipModel = !_skipModel;
+            return _skipModel;
+        }
+
+        void TriggerRender()
+        {
+            _surface->RequestRender();
+
+            if (WaitForRendered(1000) == Core::ERROR_TIMEDOUT) {
+                TRACE(Trace::Warning, ("Timed out waiting for rendered callback"));
+            }
+        }
+
         // ICallback
         void Rendered(Thunder::Compositor::IDisplay::ISurface*) override;
         void Published(Thunder::Compositor::IDisplay::ISurface*) override;
@@ -147,6 +169,8 @@ namespace Compositor {
         std::condition_variable _renderSync;
 
         bool _showFps;
+        bool _skipRender;
+        bool _skipModel;
 
         std::vector<IModel*> _models;
         std::atomic<uint8_t> _selectedModel;

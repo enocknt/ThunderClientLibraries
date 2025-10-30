@@ -18,6 +18,7 @@
 find_package(Thunder REQUIRED)
 find_package(${NAMESPACE}Core CONFIG REQUIRED)
 find_package(${NAMESPACE}Messaging CONFIG REQUIRED)
+find_package(${NAMESPACE}LocalTracer CONFIG REQUIRED)
 find_package(CompileSettingsDebug CONFIG REQUIRED)
 
 add_executable(client-compositor-render
@@ -29,6 +30,7 @@ target_link_libraries(client-compositor-render
     PRIVATE
         ${NAMESPACE}Core::${NAMESPACE}Core
         ${NAMESPACE}Messaging::${NAMESPACE}Messaging
+        ${NAMESPACE}LocalTracer::${NAMESPACE}LocalTracer
         CompileSettingsDebug::CompileSettingsDebug
         ClientCompositorRenderCommon
 )
