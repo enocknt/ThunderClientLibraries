@@ -21,12 +21,9 @@
 
 extern "C" {
 #include <drm_fourcc.h>
-
 #include <gbm.h>
-
 #include <xf86drm.h>
 #include <xf86drmMode.h>
-
 #include <EGL/egl.h>
 }
 
@@ -39,7 +36,6 @@ extern "C" {
 #include <graphicsbuffer/GraphicsBufferType.h>
 #include <interfaces/IGraphicsBuffer.h>
 
-#include "RenderAPI.h"
 #include <compositor/Client.h>
 
 #include <mutex>
