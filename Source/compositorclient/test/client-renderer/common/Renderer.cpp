@@ -286,6 +286,17 @@ namespace Compositor {
 
                     // Swap buffers
                     eglSwapBuffers(_eglDisplay, _eglSurface);
+
+                    EGLSync fence = eglCreateSync(_eglDisplay, EGL_SYNC_FENCE, nullptr);
+                    if (fence != EGL_NO_SYNC) {
+                        // Wait for GPU to finish (100ms timeout)
+                        EGLint result = eglClientWaitSync(_eglDisplay, fence,EGL_SYNC_FLUSH_COMMANDS_BIT,100000000);
+                        if (result == EGL_TIMEOUT_EXPIRED) {
+                            TRACE(Trace::Error, ("Client GPU fence timeout after 100ms"));
+                        }
+                        eglDestroySync(_eglDisplay, fence);
+                    }
+
                 } else {
                     TRACE(Trace::Warning, ("Model draw failed"));
                     std::this_thread::sleep_for(std::chrono::milliseconds(4));
