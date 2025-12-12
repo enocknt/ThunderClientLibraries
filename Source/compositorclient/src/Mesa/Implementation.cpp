@@ -39,6 +39,8 @@ extern "C" {
 #include <compositor/Client.h>
 
 #include <mutex>
+#include <cstring>
+#include <cinttypes>
 
 namespace Thunder {
 namespace Linux {
@@ -73,21 +75,20 @@ namespace Linux {
 
         const char* GetGbmBackendName(gbm_device* gbmDevice)
         {
-            static gbm_device* cachedDevice = nullptr;
-            static const char* cachedName = nullptr;
-
-            if (gbmDevice != nullptr && gbmDevice != cachedDevice) {
-                cachedName = gbm_device_get_backend_name(gbmDevice);
-                cachedDevice = gbmDevice;
-                TRACE_GLOBAL(Trace::Information, (_T("GBM Backend: %s"), cachedName));
+            if (gbmDevice == nullptr) {
+                return nullptr;
             }
-            return cachedName;
+            const char* name = gbm_device_get_backend_name(gbmDevice);
+            if (name != nullptr) {
+                TRACE_GLOBAL(Trace::Information, (_T("GBM Backend: %s"), name));
+            }
+            return name;
         }
 
         bool IsGbmBackend(gbm_device* gbmDevice, const char* name)
         {
             const char* backendName = GetGbmBackendName(gbmDevice);
-            return (backendName != nullptr) && (strcmp(backendName, name) == 0);
+            return (backendName != nullptr) && (std::strcmp(backendName, name) == 0);
         }
     }
     class Display : public Compositor::IDisplay {
@@ -310,7 +311,7 @@ namespace Linux {
                 ASSERT(_remoteClient != nullptr);
                 ASSERT(_gbmSurface != nullptr);
 
-                TRACE(Trace::Information, (_T("Construct surface[%d] %s  %dx%d (hxb)"), _id, name.c_str(), height, width));
+                TRACE(Trace::Information, (_T("Surface[%d] %s %dx%d constructed"), _id, name.c_str(), width, height));
 
                 _display.Register(this);
             }
@@ -351,8 +352,6 @@ namespace Linux {
                             _contentBuffers[i] = nullptr;
                         }
                     }
-
-                    TRACE(Trace::Information, (_T("Cleaned up all ContentBuffers for surface %s"), _name.c_str()));
                 }
 
                 // Cleanup the remote client buffers
@@ -868,19 +867,20 @@ namespace Linux {
 
             for (uint32_t format : FormatPriority) {
                 char* formatName = drmGetFormatName(format);
-
-                ASSERT(formatName != nullptr); // Should always be valid for known DRM formats
+                if (formatName == nullptr) {
+                    TRACE(Trace::Warning, ("Unknown DRM format %#x - skipping", format));
+                    continue;
+                }
 
                 surface = gbm_surface_create(_gbmDevice, width, height, format, usage);
                 if (surface != nullptr) {
-                    TRACE(Trace::Information, ("Successfully created surface with format: %s", formatName ? formatName : "Unknown"));
+                    TRACE(Trace::Information, ("Successfully created surface with format: %s", formatName));
+                    free(formatName);
                     break;
                 }
-                TRACE(Trace::Warning, ("Failed to create GBM surface with format: %s, trying next...", formatName ? formatName : "Unknown"));
 
-                if (formatName != nullptr) {
-                    free(formatName);
-                }
+                TRACE(Trace::Warning, ("Failed to create GBM surface with format: %s, trying next...", formatName));
+                free(formatName);
             }
 
             return surface;
@@ -944,7 +944,7 @@ namespace Linux {
             _gbmDevice = nullptr;
         }
 
-        if (_gpuId > 0) {
+        if (_gpuId >= 0) {
             ::close(_gpuId);
             _gpuId = -1;
         }

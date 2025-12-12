@@ -33,6 +33,8 @@ add_library(ClientCompositorRenderCommon STATIC
     TextRender.cpp
 )
 
+set_target_properties(ClientCompositorRenderCommon PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_link_libraries(ClientCompositorRenderCommon
     PUBLIC
         ${NAMESPACE}Core::${NAMESPACE}Core
