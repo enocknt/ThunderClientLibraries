@@ -260,6 +260,11 @@ namespace Compositor {
 
     void Render::Draw()
     {
+        uint64_t loopStart(Core::Time::Now().Ticks());
+        uint64_t beforeSwap(loopStart);
+        uint64_t afterSwap(loopStart);
+        uint64_t afterRequest(loopStart);
+
         // Make context current for this render thread
         if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
             EGLint error = eglGetError();
@@ -285,12 +290,14 @@ namespace Compositor {
                     }
 
                     // Swap buffers
+                    beforeSwap = Core::Time::Now().Ticks();
                     eglSwapBuffers(_eglDisplay, _eglSurface);
+                    afterSwap = Core::Time::Now().Ticks();
 
                     EGLSync fence = eglCreateSync(_eglDisplay, EGL_SYNC_FENCE, nullptr);
                     if (fence != EGL_NO_SYNC) {
                         // Wait for GPU to finish (100ms timeout)
-                        EGLint result = eglClientWaitSync(_eglDisplay, fence,EGL_SYNC_FLUSH_COMMANDS_BIT,100000000);
+                        EGLint result = eglClientWaitSync(_eglDisplay, fence, EGL_SYNC_FLUSH_COMMANDS_BIT, 100000000);
                         if (result == EGL_TIMEOUT_EXPIRED) {
                             TRACE(Trace::Error, ("Client GPU fence timeout after 100ms"));
                         }
@@ -305,15 +312,17 @@ namespace Compositor {
 
             if (_skipRender == false) {
                 _surface->RequestRender();
+                afterRequest = Core::Time::Now().Ticks();
 
                 // allow for for 2 25FPS frame delay
                 if (WaitForRendered(80) == Core::ERROR_TIMEDOUT) {
-                    printf("%d @[%" PRIu64 "] BRAM Render Timeout\n", __LINE__, Core::Time::Now().Ticks());
                     TRACE(Trace::Warning, ("Timed out waiting for rendered callback"));
                 }
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
             }
+
+             TRACE(Trace::Timing, (_T("Surface[%s]: draw=%" PRIu64 " us, swap=%" PRIu64 " us, request=%" PRIu64 " us, total=%" PRIu64 " us"), _displayName.c_str(), (beforeSwap - loopStart), (afterSwap - beforeSwap), (afterRequest - afterSwap), (afterRequest - loopStart)));
         }
 
         // Release context when done
