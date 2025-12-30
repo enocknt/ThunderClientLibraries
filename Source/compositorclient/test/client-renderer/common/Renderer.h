@@ -46,6 +46,12 @@ namespace Compositor {
 
         virtual ~Render() override
         {
+            Stop();
+
+            for (auto* model : _models) {
+                Unregister(model);
+            }
+
             CleanupEGL();
 
             if (_surface) {
@@ -83,12 +89,16 @@ namespace Compositor {
         }
         void Stop()
         {
-            bool expected = true;
-            if (_running.compare_exchange_strong(expected, false)) {
-                TRACE(Trace::Information, ("Stopping Render"));
+            _running.store(false);
+            _renderSync.notify_all();
+
+            if (_render.joinable()) {
+                TRACE(Trace::Information, ("Stopping Render thread"));
                 _render.join();
-                _selectedModel = ~0;
+                TRACE(Trace::Information, ("Render thread stopped"));
             }
+
+            _selectedModel = ~0;
         }
         bool IsRunning() const
         {
