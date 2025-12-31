@@ -81,7 +81,7 @@ namespace Compositor {
             ASSERT(_surface != nullptr);
 
             if (!InitializeEGL()) {
-                fprintf(stderr, "Failed to initialize EGL\n");
+                TRACE(Trace::Error, ("Failed to initialize EGL"));
                 return false;
             }
 
@@ -97,20 +97,20 @@ namespace Compositor {
             config.ToString(configStr);
 
             if (!_textRender.Initialize(width, height, configStr)) {
-                fprintf(stderr, "Failed to initialize FPS counter\n");
+                TRACE(Trace::Error, ("Failed to initialize FPS counter"));
                 return false;
             }
 
             // Release EGL context for render thread
             if (!eglMakeCurrent(_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
                 EGLint error = eglGetError();
-                fprintf(stderr, "Failed to release EGL context: 0x%x\n", error);
+                TRACE(Trace::Error, ("Configure: eglMakeCurrent release failed: 0x%x", error));
                 return false;
             }
 
             return true;
         } else {
-            fprintf(stderr, "Failed to initialize display\n");
+            TRACE(Trace::Error, ("Failed to create Compositor Display"));
             return false;
         }
     }
@@ -143,7 +143,7 @@ namespace Compositor {
         if (result == true) {
             _models.push_back(model);
         } else {
-            fprintf(stderr, "Failed to initialize model during registration\n");
+            TRACE(Trace::Error, ("Failed to initialize model during registration"));
         }
 
         return result;
@@ -165,8 +165,7 @@ namespace Compositor {
 
         // Make context current
         if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
-            EGLint error = eglGetError();
-            fprintf(stderr, "InitializeModel: eglMakeCurrent failed: 0x%x\n", error);
+            TRACE(Trace::Error, ("InitializeModel: eglMakeCurrent failed: 0x%x", eglGetError()));
             return false;
         }
 
@@ -175,8 +174,7 @@ namespace Compositor {
 
         // Release context
         if (!eglMakeCurrent(_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)) {
-            EGLint error = eglGetError();
-            fprintf(stderr, "InitializeModel: release failed: 0x%x\n", error);
+            TRACE(Trace::Error, ("InitializeModel: eglMakeCurrent release failed: 0x%x", eglGetError()));
         }
 
         return result;
@@ -189,12 +187,12 @@ namespace Compositor {
 
         _eglDisplay = eglGetDisplay(display);
         if (_eglDisplay == EGL_NO_DISPLAY) {
-            fprintf(stderr, "eglGetDisplay failed\n");
+            TRACE(Trace::Error, ("eglGetDisplay failed: 0x%x", eglGetError()));
             return false;
         }
 
         if (!eglInitialize(_eglDisplay, nullptr, nullptr)) {
-            fprintf(stderr, "eglInitialize failed\n");
+            TRACE(Trace::Error, ("eglInitialize failed: 0x%x", eglGetError()));
             return false;
         }
 
@@ -211,7 +209,7 @@ namespace Compositor {
         EGLConfig eglConfig;
         EGLint numConfigs;
         if (!eglChooseConfig(_eglDisplay, configAttribs, &eglConfig, 1, &numConfigs)) {
-            fprintf(stderr, "eglChooseConfig failed\n");
+            TRACE(Trace::Error, ("eglChooseConfig failed: 0x%x", eglGetError()));
             return false;
         }
 
@@ -222,19 +220,18 @@ namespace Compositor {
 
         _eglContext = eglCreateContext(_eglDisplay, eglConfig, EGL_NO_CONTEXT, contextAttribs);
         if (_eglContext == EGL_NO_CONTEXT) {
-            fprintf(stderr, "eglCreateContext failed\n");
+            TRACE(Trace::Error, ("Failed to create EGL context: 0x%x", eglGetError()));
             return false;
         }
 
         _eglSurface = eglCreateWindowSurface(_eglDisplay, eglConfig, window, nullptr);
         if (_eglSurface == EGL_NO_SURFACE) {
-            fprintf(stderr, "eglCreateWindowSurface failed\n");
+            TRACE(Trace::Error, ("Failed to create EGL surface: 0x%x", eglGetError()));
             return false;
         }
 
         if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
-            EGLint error = eglGetError();
-            fprintf(stderr, "eglMakeCurrent failed: 0x%x\n", error);
+            TRACE(Trace::Error, ("eglMakeCurrent failed: 0x%x", eglGetError()));
             return false;
         }
 
@@ -268,7 +265,7 @@ namespace Compositor {
         // Make context current for this render thread
         if (!eglMakeCurrent(_eglDisplay, _eglSurface, _eglSurface, _eglContext)) {
             EGLint error = eglGetError();
-            fprintf(stderr, "Draw: eglMakeCurrent failed: 0x%x\n", error);
+            TRACE(Trace::Error, ("Draw: eglMakeCurrent failed: 0x%x", error));
             return;
         }
 
@@ -322,7 +319,7 @@ namespace Compositor {
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
             }
 
-             TRACE(Trace::Timing, (_T("Surface[%s]: draw=%" PRIu64 " us, swap=%" PRIu64 " us, request=%" PRIu64 " us, total=%" PRIu64 " us"), _displayName.c_str(), (beforeSwap - loopStart), (afterSwap - beforeSwap), (afterRequest - afterSwap), (afterRequest - loopStart)));
+            TRACE(Trace::Timing, (_T("Surface[%s]: draw=%" PRIu64 " us, swap=%" PRIu64 " us, request=%" PRIu64 " us, total=%" PRIu64 " us"), _displayName.c_str(), (beforeSwap - loopStart), (afterSwap - beforeSwap), (afterRequest - afterSwap), (afterRequest - loopStart)));
         }
 
         // Release context when done
