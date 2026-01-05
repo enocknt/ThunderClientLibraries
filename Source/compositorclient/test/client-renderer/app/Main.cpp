@@ -320,6 +320,7 @@ int main(int argc, char* argv[])
     {
         Tracer tracer;
         tracer.Configure("App_CompositionClientRender", { "Information", "Error", "Warning" });
+        tracer.Configure("Common_CompositionClientRender", { "Error", "Warning" });
 
         ConsoleOptions options(argc, argv);
         bool quitApp(false);
