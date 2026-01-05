@@ -91,6 +91,10 @@ namespace Linux {
             return (backendName != nullptr) && (std::strcmp(backendName, name) == 0);
         }
     }
+    
+    DEFINE_MESSAGING_CATEGORY(Core::Messaging::BaseCategoryType<Core::Messaging::Metadata::type::TRACING>, BufferInfo)
+    DEFINE_MESSAGING_CATEGORY(Core::Messaging::BaseCategoryType<Core::Messaging::Metadata::type::TRACING>, BufferError)
+    
     class Display : public Compositor::IDisplay {
     public:
         Display() = delete;
@@ -516,10 +520,10 @@ namespace Linux {
                 gbm_bo* frameBuffer = gbm_surface_lock_front_buffer(_gbmSurface);
                 uint64_t after = Core::Time::Now().Ticks();
 
-                TRACE(Trace::Information, (_T("Surface[%d]: lock_front_buffer took %" PRIu64 " µs, returned %p"), _id, (after - before), static_cast<void*>(frameBuffer)));
+                TRACE(BufferInfo, (_T("Surface[%d]: lock_front_buffer took %" PRIu64 " µs, returned %p"), _id, (after - before), static_cast<void*>(frameBuffer)));
 
                 if (frameBuffer == nullptr) {
-                    TRACE(Trace::Error, (_T("Surface %s: lock_front_buffer failed"), _name.c_str()));
+                    TRACE(BufferError, (_T("Surface %s: lock_front_buffer failed"), _name.c_str()));
                     NotifyRendered();
                     return;
                 }
@@ -563,9 +567,7 @@ namespace Linux {
 
                         // Handle orphaned retired buffer (shouldn't happen normally)
                         if (oldRetired != nullptr) {
-                            TRACE(Trace::Warning,
-                                (_T("Surface %s: orphaned retired buffer %p"),
-                                    _name.c_str(), oldRetired->Bo()));
+                            TRACE(BufferError, (_T("Surface %s: orphaned retired buffer %p"), _name.c_str(), oldRetired->Bo()));
                             ReleaseToGbm(oldRetired);
                         }
                     }
@@ -612,9 +614,7 @@ namespace Linux {
             {
                 if (buffer != nullptr && buffer->Release() && _gbmSurface != nullptr) {
                     gbm_surface_release_buffer(_gbmSurface, buffer->Bo());
-                    TRACE(Trace::Information,
-                        (_T("Surface %s: buffer %p released to GBM"),
-                            _name.c_str(), buffer->Bo()));
+                    TRACE(BufferInfo, (_T("Surface %s: buffer %p released to GBM"), _name.c_str(), buffer->Bo()));
                 }
             }
 
@@ -645,8 +645,7 @@ namespace Linux {
                 }
 
                 if (slot == MaxContentBuffers) {
-                    TRACE(Trace::Error,
-                        (_T("Surface %s: buffer pool exhausted"), _name.c_str()));
+                    TRACE(Trace::Error, (_T("Surface %s: buffer pool exhausted"), _name.c_str()));
                     return nullptr;
                 }
 
@@ -654,9 +653,7 @@ namespace Linux {
                 _contentBuffers[slot] = buffer;
                 gbm_bo_set_user_data(frameBuffer, buffer, &ContentBuffer::Destroyed);
 
-                TRACE(Trace::Information,
-                    (_T("Surface %s: created ContentBuffer %p in slot %zu"),
-                        _name.c_str(), buffer, slot));
+                TRACE(Trace::Information, (_T("Surface %s: created ContentBuffer %p in slot %zu"), _name.c_str(), buffer, slot));
 
                 return buffer;
             }
