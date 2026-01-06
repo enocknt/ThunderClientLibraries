@@ -36,6 +36,11 @@ static void PngWarnFn(png_structp, png_const_charp msg) {
 PixelData LoadPNG(const std::string& filename) {
     PixelData result = {0, 0, 4, {}};
 
+    // PNG loading implementation follows the transformation pipeline described in
+    // the official libpng manual: http://www.libpng.org/pub/png/libpng-manual.txt
+    // Section III.2 "Reading PNG files" - we normalize all input formats to RGBA8
+    // for consistent texture handling across the compositor system.
+
     FILE* fp = fopen(filename.c_str(), "rb");
     if (!fp) return result;
 
@@ -59,13 +64,29 @@ PixelData LoadPNG(const std::string& filename) {
     int color_type = png_get_color_type(png, info);
     int bit_depth  = png_get_bit_depth(png, info);
 
-    // Force RGBA8
+    // Apply libpng transformations to normalize any input PNG format to RGBA8 output.
+    // This transformation chain handles: 16-bit depths, palette images, grayscale formats,
+    // transparency chunks, and ensures consistent 4-byte-per-pixel RGBA layout.
+    // Each transformation is applied conditionally based on the input format detected above.
+    // See libpng-manual.txt Section III.2 for the standard transformation sequence.
+    
+    // Reduce 16-bit samples to 8-bit for embedded device memory efficiency
     if (bit_depth == 16) png_set_strip_16(png);
+    
+    // Expand palette-based images to full RGB for uniform processing
     if (color_type == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png);
+    
+    // Normalize low-bit-depth grayscale (1,2,4-bit) to 8-bit
     if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) png_set_expand_gray_1_2_4_to_8(png);
+    
+    // Convert transparency chunks (tRNS) to full alpha channel
     if (png_get_valid(png, info, PNG_INFO_tRNS)) png_set_tRNS_to_alpha(png);
+    
+    // Add opaque alpha channel (0xFF) to RGB/Gray/Palette images without transparency
     if (color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE)
         png_set_filler(png, 0xFF, PNG_FILLER_AFTER);
+    
+    // Convert grayscale to RGB (grayscale and grayscale+alpha both handled)
     if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
         png_set_gray_to_rgb(png);
 
