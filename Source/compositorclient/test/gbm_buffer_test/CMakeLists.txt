@@ -15,6 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+option(INSTALL_CLIENT_COMPOSITOR_GBM_TEST_APP "Install the GBM compositor client test application" OFF)
+
 find_package(CompileSettingsDebug CONFIG REQUIRED)
 find_package(gbm REQUIRED)
 find_package(libdrm REQUIRED)
@@ -37,6 +39,6 @@ target_link_libraries(gbm_buffer_test
         gbm::gbm
         EGL::EGL
 )
-
+if(INSTALL_CLIENT_COMPOSITOR_GBM_TEST_APP)
 install(TARGETS gbm_buffer_test DESTINATION ${CMAKE_INSTALL_BINDIR}/${NAMESPACE}Tests COMPONENT ${NAMESPACE}_Test)
-
+endif()

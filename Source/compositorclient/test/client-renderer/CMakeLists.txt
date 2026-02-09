@@ -1,4 +1,3 @@
-
 # If not stated otherwise in this file or this component's license file the
 # following copyright and licenses apply:
 #
@@ -14,21 +13,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.
+# limitations under the License
 
-option(BUILD_CLIENT_COMPOSITOR_GBM_UTIL "Build the GBM basic test" ON)
-option(BUILD_CLIENT_COMPOSITOR_RENDER_TEST "Build the renderer compositor client test" ON)
-option(BUILD_COMPOSITORCLIENT_TEST "Build Compositor Client legacy test" OFF)
+option(INSTALL_CLIENT_COMPOSITOR_RENDER_TEST_APP "Install the client texture renderer test application" ON)
+option(INSTALL_CLIENT_COMPOSITOR_RENDER_TEST_PLUGIN "Install the client texture renderer test plugin" ON)
 
-
-if(BUILD_CLIENT_COMPOSITOR_GBM_UTIL)
-add_subdirectory(gbm_buffer_test)
-endif()
-
-if(BUILD_CLIENT_COMPOSITOR_RENDER_TEST)
-add_subdirectory(client-renderer)
-endif()
-
-if(BUILD_COMPOSITORCLIENT_TEST)
-add_subdirectory(legacy-test)
-endif()
+add_subdirectory(common)
+add_subdirectory(app)
+add_subdirectory(plugin)
